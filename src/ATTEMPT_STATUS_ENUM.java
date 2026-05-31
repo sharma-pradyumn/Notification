@@ -1,0 +1,6 @@
+public enum ATTEMPT_STATUS_ENUM {
+    PENDING,
+    IN_PROGRESS,
+    SUCCESS,
+    FAILED
+}

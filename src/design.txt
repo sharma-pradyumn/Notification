@@ -1,0 +1,234 @@
+1. Requirements
+Functional Requirements
+Send notifications to users.
+Support multiple channels:
+Email
+SMS
+Push
+Respect user channel preferences.
+Support notification templates/content.
+Retry failed notification deliveries with exponential backoff.
+Track delivery status for each notification attempt.
+Send to all enabled channels for a user.
+
+Example:
+
+User:
+    EMAIL enabled
+    SMS enabled
+    PUSH disabled
+
+Notification:
+
+    -> Email attempt
+    -> SMS attempt
+
+
+Non-Functional Requirements
+Easily add new notification channels.
+Reliable delivery (at-least-once is fine).
+Asynchronous notification processing.
+Failure of one channel should not impact others.
+Scalable to large notification volumes.
+2. Design Summary
+
+Notification
+Logical notification request.
+
+Represents:
+What to send
+Who to send to
+
+Contains:
+notificationId
+userId
+template/content
+priority
+createdAt
+
+
+
+NotificationAttempt
+Runtime delivery attempt.
+
+Represents:
+One channel trying to deliver one notification
+
+Contains:
+attemptId
+notification reference
+channel
+status
+retryCount
+timestamp
+
+Example:
+Notification #101
+    Email Attempt
+        SUCCESS
+    SMS Attempt
+        FAILED
+    Push Attempt
+        SUCCESS
+
+
+
+ChannelType
+EMAIL
+SMS
+PUSH
+
+
+
+NotificationChannel
+Strategy abstraction.
+
+interface NotificationChannel {
+    SendResult send(
+        NotificationAttempt attempt
+    );
+}
+
+Implementations:
+EmailChannel
+SmsChannel
+PushChannel
+
+Channel responsibility:
+actually send notification
+Nothing else.
+No repository access.
+No retry logic.
+
+PreferenceService
+Stores user channel preferences.
+
+Example:
+userId
+    -> enabled channels
+Used by orchestrator before creating attempts.
+
+
+
+NotificationRepository
+Persistence/query layer.
+
+Stores:
+notificationId -> Notification
+attemptId -> NotificationAttempt
+notificationId -> attempts
+
+Supports:
+getNotification()
+getAttempt()
+getAttemptsForNotification()
+etc.
+
+NotificationExecutor
+Thin async execution layer.
+
+Owns:
+ExecutorService
+
+Responsibility:
+run attempt asynchronously
+invoke channel
+return result
+
+No repository.
+No retry logic.
+No preference logic.
+
+
+
+RetryPolicy
+Encapsulates retry behavior.
+
+Example:
+interface RetryPolicy {
+    boolean shouldRetry(
+        NotificationAttempt attempt
+    );
+
+    Duration nextRetryDelay(
+        NotificationAttempt attempt
+    );
+}
+
+Example implementation:
+maxRetries = 3
+1s
+2s
+4s
+
+
+
+NotificationOrchestrator
+Workflow coordinator.
+
+Responsibilities:
+Receive notification request
+↓
+Query PreferenceService
+↓
+Create Notification
+↓
+Create NotificationAttempts
+↓
+Persist
+↓
+Submit attempts to NotificationExecutor
+↓
+Process SendResult
+↓
+Update repository
+↓
+Invoke RetryPolicy if needed
+
+
+
+High-Level Flow
+
+sendNotification()
+
+NotificationOrchestrator
+
+        ↓
+
+PreferenceService
+
+        ↓
+
+Enabled Channels
+
+        ↓
+
+Create Notification
+
+        ↓
+
+Create NotificationAttempts
+
+        ↓
+
+NotificationRepository
+
+        ↓
+
+NotificationExecutor
+
+        ↓
+
+EmailChannel / SmsChannel / PushChannel
+
+        ↓
+
+SendResult
+
+        ↓
+
+NotificationOrchestrator
+
+        ↓
+
+RetryPolicy / Status Update

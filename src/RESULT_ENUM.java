@@ -1,0 +1,6 @@
+public enum RESULT_ENUM {
+    PENDING,
+    FAILED_TEMPORARY,
+    FAILED_PERMANENT,
+    SUCCESS,
+}
